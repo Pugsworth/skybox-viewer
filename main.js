@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { SliceCubemap } from "./imageslice.js";
 import { lerp } from "three/src/math/MathUtils.js";
+import { GUI } from "dat.gui";
 
 
 // Create an object that holds the state of the entire program.
@@ -18,7 +19,7 @@ let state = {
 };
 
 state.canvas = document.querySelector("canvas");
-state.gl = state.canvas.getContext("webgl");
+state.gl = state.canvas.getContext("webgl", { alpha: false, antialias: true, colorSpace: "srgb" });
 
 class Vec2
 {
@@ -75,6 +76,7 @@ class DragDropHandler {
 class CameraControls {
     constructor(camera) {
         this.camera = camera;
+        this.fov = 60;
         this.lat = 0;
         this.lon = 0;
         this.velocity = new Vec2();
@@ -151,6 +153,8 @@ class CameraControls {
 
         this.velocity.x *= 0.9; // Decay
         this.velocity.y *= 0.9; // Decay
+
+        // this.camera.fov = this.fov;
     }
 }
 
@@ -185,20 +189,7 @@ class CameraAnimator {
     }
 }
 
-
-let geometries = {
-    "pano": new THREE.SphereGeometry(500, 60, 40),
-    "cube": new THREE.BoxGeometry(100, 100, 100)
-};
-geometries.pano.scale(-1, 1, 1);
-
 let materials = {
-    "pano": new THREE.MeshBasicMaterial({
-        map: new THREE.TextureLoader().load("pano.jpg"),
-    }),
-    "cube": new THREE.MeshBasicMaterial({
-        color: 0x00ff00
-    }),
     "shiny": new THREE.MeshStandardMaterial({
         color: 0XAEAEAE,
         roughness: 0.5,
@@ -211,29 +202,81 @@ let materials = {
  * Loads panoramic/equirectangular image.
  */
 function loadPanorama(scene, image) {
-    let tex = new THREE.Texture(image);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
+    let tex = new THREE.Texture(
+        image,
+        THREE.EquirectangularRefractionMapping,
+        THREE.ClampToEdgeWrapping,
+        THREE.ClampToEdgeWrapping,
+        THREE.LinearFilter,
+        THREE.LinearFilter
+    );
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.generateMipmaps = false;
     tex.needsUpdate = true;
-    scene.background = tex;
+    tex.anisotropy = state.renderer.capabilities.getMaxAnisotropy();
+
+    if (!state.panoball) {
+        let geo = new THREE.SphereGeometry(500, 60, 40);
+        geo.scale(-1, 1, 1);
+        let mat = new THREE.MeshBasicMaterial({ map: null });
+        state.panoball = new THREE.Mesh(geo, mat);
+        scene.add(state.panoball);
+    }
+
+    state.panoball.material.map = tex;
+    state.panoball.visible = true;
+
+    // let rt = new THREE.WebGLCubeRenderTarget(image.height);
+    // rt.fromEquirectangularTexture(state.renderer, tex);
+    // scene.background = rt.texture;
+    // scene.environment = rt.texture;
 }
+
 
 /**
  * Loads cubemap from six images.
  */
-function loadCubemapFaces() {
+function loadCubemapFaces(scene, images) {
+    if (state.panoball) {
+        state.panoball.visible = false;
+    }
+
+    // The mapping of faces is weird.
+    let cubeImages = [
+        images.posz, images.negz,
+        images.posy, images.negy,
+        images.negx, images.posx
+    ];
+
+    console.log(cubeImages);
+
     let loader = new THREE.CubeTextureLoader();
-    let tex = loader.load("cubemap.png");
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.mapping = THREE.CubeReflectionMapping;
-    scene.background = tex
+    let cubeTex = loader.load(cubeImages);
+
+    // let cubeTex = new THREE.CubeTexture(
+    //     cubeImages,
+    //     THREE.CubeReflectionMapping,
+    //     THREE.ClampToEdgeWrapping,
+    //     THREE.ClampToEdgeWrapping,
+    //     THREE.LinearFilter,
+    //     THREE.LinearFilter
+    // );
+    // cubeTex.generateMipmaps = false;
+    // cubeTex.colorSpace = THREE.SRGBColorSpace; // REQUIRED!
+    // cubeTex.needsUpdate = true; // REQUIRED!
+    scene.background = cubeTex;
+    scene.environment = cubeTex;
 }
+
 
 /**
  * Loads cubemap from single image.
  */
 function loadCubemap(scene, image) {
+    if (state.panoball) {
+        state.panoball.visible = false;
+    }
+
     let facesImages = SliceCubemap(image);
     let cubeImages = [
         facesImages.posx, facesImages.negx,
@@ -249,6 +292,7 @@ function loadCubemap(scene, image) {
         THREE.LinearFilter,
         THREE.LinearFilter
     );
+    cubeTex.generateMipmaps = false;
     cubeTex.colorSpace = THREE.SRGBColorSpace; // REQUIRED!
     cubeTex.needsUpdate = true; // REQUIRED!
     scene.background = cubeTex;
@@ -270,11 +314,10 @@ function init()
     state.cameraControls = cameraControls;
 
     let renderer = new THREE.WebGLRenderer({canvas: state.canvas, antialias: true});
-    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    // renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    // renderer.gammaOutput = true;
-    // renderer.gammaFactor = 2.2;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NoToneMapping;
 
     state.renderer = renderer;
 
@@ -282,8 +325,7 @@ function init()
     scene.add(camera);
 
     let geo = new THREE.BoxGeometry(100, 100, 100);
-    let mat = new THREE.MeshBasicMaterial({color: 0x00ff00});
-    let cube = new THREE.Mesh(geo, mat);
+    let cube = new THREE.Mesh(geo, materials.shiny);
     scene.add(cube);
     cube.position.set(200, -100, 0);
 
@@ -300,6 +342,16 @@ function init()
         // loadCubemap(scene, img);
     };
 
+    let gui = new GUI();
+    let camgui = gui.addFolder("Camera");
+    camgui.add(cameraControls, "fov", 0, 180).onChange(function(value) {
+        camera.fov = value;
+        camera.updateProjectionMatrix();
+    });
+
+    state.gui = gui;
+
+
 
     // Mouse controls.
     document.addEventListener("mousedown", function(event) {
@@ -310,7 +362,7 @@ function init()
     document.addEventListener("mouseup", function(event) {
         event.preventDefault();
         cameraControls.mouseUp(event);
-        event.stopImmediatePropagation();
+        // event.stopImmediatePropagation();
     });
 
     document.addEventListener("mousemove", function(event) {
@@ -329,10 +381,12 @@ function init()
     state.dragDropHandler = dragDropHandler;
     document.addEventListener("dragenter", function(event) {
         dragDropHandler.startDrag(event);
+        document.body.style.opacity = 0.5;
     });
 
     document.addEventListener("dragleave", function(event) {
         dragDropHandler.endDrag(event);
+        document.body.style.opacity = 1.0;
     });
 
     document.addEventListener("dragover", function(event) {
@@ -341,11 +395,12 @@ function init()
     });
 
     document.addEventListener("drop", function(event) {
-        console.log(event.dataTransfer);
+        document.body.style.opacity = 1.0;
         event.preventDefault();
         dragDropHandler.drop(event);
 
         let files = event.dataTransfer.files;
+        console.log(files);
 
         if (files.length === 0) {
             console.error("No files dropped.");
@@ -360,8 +415,6 @@ function init()
                 img.onload = () => {
                     // TODO: Detect panorama or cubemap.
                     const aspect = img.width / img.height;
-                    console.log(`Aspect: ${aspect}`);
-                    console.log(`4/3 - aspect: ${4/3 - aspect}`);
 
                     if ( Math.abs((4/3) - aspect) < 0.1 ) {
                         loadCubemap(scene, img);
@@ -372,7 +425,11 @@ function init()
             };
             reader.readAsDataURL(file);
         } else {
-            // TODO: This must be a cubemap of 6 images.
+            // Attempt to match the faces to the filenames
+            let faces = detectCubemapFaces(files);
+            if (faces) {
+                loadCubemapFaces(scene, faces);
+            }
         }
     });
 
@@ -413,4 +470,52 @@ let imageHistory = [];
 
 // Generate a small thumbnail image. This is used for the image history.
 function CreateThumbnail(image) {
+}
+
+let cubemapFaceSearch = [
+    { name: "posx", aliases: ["posx", "left", "[-_]lf"] },
+    { name: "negx", aliases: ["negx", "right", "[-_]rt"] },
+    { name: "posy", aliases: ["posy", "top", "[-_]tp", "up", "[-_]up"] },
+    { name: "negy", aliases: ["negy", "bottom", "[-_]bt", "down", "[-_]dn"] },
+    { name: "posz", aliases: ["posz", "front", "[-_]ft"] },
+    { name: "negz", aliases: ["negz", "back", "[-_]bk"] }
+];
+
+function detectCubemapFaces(files) {
+    let faces = {
+        posx: null,
+        negx: null,
+        posy: null,
+        negy: null,
+        posz: null,
+        negz: null
+    };
+    let foundAtLeastOne = false;
+
+    for (let i = 0; i < files.length; i++) {
+        let file = files[i];
+        let name = file.name.toLowerCase();
+        console.log(name);
+
+        for (let j = 0; j < cubemapFaceSearch.length; j++) {
+            let face = cubemapFaceSearch[j];
+            let aliases = face.aliases;
+
+            for (let k = 0; k < aliases.length; k++) {
+                let alias = aliases[k];
+                let regex = new RegExp(alias, "g");
+                if (regex.test(name)) {
+                    foundAtLeastOne = true;
+
+                    faces[face.name] = URL.createObjectURL(file);
+                }
+            }
+        }
+    }
+
+    if (!foundAtLeastOne) {
+        return null;
+    }
+
+    return faces;
 }

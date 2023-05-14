@@ -211,8 +211,6 @@ let materials = {
  * Loads panoramic/equirectangular image.
  */
 function loadPanorama(scene, image) {
-    // let loader = new THREE.TextureLoader();
-    // let tex = loader.load("pano.jpg");
     let tex = new THREE.Texture(image);
     tex.mapping = THREE.EquirectangularReflectionMapping;
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -236,27 +234,24 @@ function loadCubemapFaces() {
  * Loads cubemap from single image.
  */
 function loadCubemap(scene, image) {
-    // let img = new Image();
-    // // img.src = "cubemap.png";
-    // img.src = url;
-    // img.onload = () => {
-        let facesImages = SliceCubemap(image);
-        let cubeImages = [
-            facesImages.posx, facesImages.negx,
-            facesImages.posy, facesImages.negy,
-            facesImages.posz, facesImages.negz
-        ];
+    let facesImages = SliceCubemap(image);
+    let cubeImages = [
+        facesImages.posx, facesImages.negx,
+        facesImages.posy, facesImages.negy,
+        facesImages.posz, facesImages.negz
+    ];
 
-        let cubeTex = new THREE.CubeTexture(
-            cubeImages,
-            THREE.CubeReflectionMapping,
-            THREE.SRGBEncoding,
-            THREE.ClampToEdgeWrapping,
-            THREE.ClampToEdgeWrapping
-        );
-        cubeTex.needsUpdate = true; // REQUIRED!
-        scene.background = cubeTex;
-    // };
+    let cubeTex = new THREE.CubeTexture(
+        cubeImages,
+        THREE.CubeReflectionMapping,
+        THREE.ClampToEdgeWrapping,
+        THREE.ClampToEdgeWrapping,
+        THREE.LinearFilter,
+        THREE.LinearFilter
+    );
+    cubeTex.colorSpace = THREE.SRGBColorSpace; // REQUIRED!
+    cubeTex.needsUpdate = true; // REQUIRED!
+    scene.background = cubeTex;
 }
 
 
@@ -274,14 +269,16 @@ function init()
     let cameraControls = new CameraControls(camera);
     state.cameraControls = cameraControls;
 
-    let renderer = new THREE.WebGLRenderer({canvas: state.canvas});
+    let renderer = new THREE.WebGLRenderer({canvas: state.canvas, antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    // document.body.appendChild(renderer.domElement);
+    // renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // renderer.gammaOutput = true;
+    // renderer.gammaFactor = 2.2;
 
     state.renderer = renderer;
 
-    scene.add(new THREE.AmbientLight(0x404040));
+    // scene.add(new THREE.AmbientLight(0x404040));
     scene.add(camera);
 
     let geo = new THREE.BoxGeometry(100, 100, 100);
@@ -293,7 +290,7 @@ function init()
     camera.lookAt(cube.position);
 
 
-    scene.background = new THREE.Color(0xC2EABD);
+    // scene.background = new THREE.Color(0xC2EABD);
 
     let img = new Image();
     // img.src = "cubemap.png";

@@ -1,5 +1,5 @@
 const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas.getContext("2d", { alpha: false });
 
 // The layout of the tiles in the cubemap image.
 // TODO: Figure out what layouts are possible.
@@ -24,11 +24,12 @@ const layout = "4x3";
 /**
  * Slices a cubemap image into 6 images.
  * @param {Image} image
- * @returns {Image[]}
+ * @returns {Object<string, ImageData>}
  */
 export function SliceCubemap(image) {
     canvas.width = image.width;
     canvas.height = image.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0);
 
     // TODO: Layout stuff here!
@@ -51,7 +52,6 @@ export function SliceCubemap(image) {
         const { x, y } = faceCoords[i];
         const imageData = ctx.getImageData(x * tileWidth, y * tileHeight, tileWidth, tileHeight);
 
-        // images.push({ name: faceNames[i], data: imageData });
         let name = faceNames[i];
         images[name] = imageData;
     }
